@@ -385,3 +385,73 @@ def FindTargetPostion(p, ps, edge, L):
     
     pt = np.complex128(pt)
     return pt, min_idx, min_NBR
+
+
+
+def generate_complex_weight_matrix(edge, r_complex):
+    """
+    基于编队的边集和节点的位置，生成复权重矩阵。
+
+    Parameters
+    ----------
+    edge : np.ndarray
+        编队的边集，(m, 2)
+    r_complex : np.ndarray
+        节点的位置复数表示，(n,)
+    
+    Returns
+    -------
+    W : np.ndarray
+        复权重矩阵，(n, n)
+    Wf : np.ndarray
+        复权重矩阵的前 n-2 行，(n-2, n)
+    Wfl : np.ndarray
+        复权重矩阵的前 n-2 行的后两列，(n-2, 2)
+    Wff : np.ndarray
+        复权重矩阵的前 n-2 行的前 n-2 列，(n-2, n-2)
+    
+    """
+    n = r_complex.shape[0]  # 编队中节点的数量  
+    W = np.zeros((n, n), dtype=np.complex128)
+    for i in range(n):
+        NBR = SrchNbr(i+1, edge)    # Convert to 1-based index
+        Wi = compute_weight_i(NBR, r_complex, i+1, n)
+        W[i] = Wi
+        sum_i = 0
+        for j in range(n):
+            sum_i -= Wi[j]
+        W[i, i] = sum_i
+    
+    Wf = W[0:n-2, :]
+    Wfl = W[0:n-2, n-2:]
+    Wff = W[0:n-2, 0:n-2]
+
+    return W, Wf, Wfl, Wff
+
+
+
+def update_edge(edge, nbr1, nbr2):
+    """
+    更新边集，当新的节点 node 加入编队后将 node 与 nbr1 和 node 与 nbr2 之间的边加入到边集中。
+    新的节点 node 的索引为 1，原本所有节点的索引依次加 1。
+
+    Parameters
+    ----------
+    edge : np.ndarray
+        编队的边集，(m, 2)
+    nbr1 : int
+        节点1的索引
+    nbr2 : int
+        节点2的索引
+    
+    Returns
+    -------
+    edge_new : np.ndarray
+        更新后的边集，(m+1, 2)
+    """
+    for i in range(edge.shape[0]):
+        edge[i, 0] += 1
+        edge[i, 1] += 1
+    edge_new = np.vstack((np.array([1, nbr1+1]), np.array([1, nbr2+1]), edge))  # 因为原本所有节点的索引都加了 1
+    
+    return edge_new
