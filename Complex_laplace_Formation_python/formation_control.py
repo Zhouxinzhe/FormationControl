@@ -1,3 +1,6 @@
+# Description: This file is used to simulate the formation control of multi-agent system based on complex Laplace formation control algorithm.
+# wij = a + bj
+
 import numpy as np
 import sympy as sp
 import matplotlib.pyplot as plt

@@ -1,6 +1,9 @@
 import numpy as np
 from scipy.special import comb
+from scipy.spatial.transform import Rotation as R
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d.art3d import Line3DCollection
 import sympy as sp
 
 def plot_curve(y_values, title="Y值曲线图", x_label="X", y_label="Y"):
@@ -191,6 +194,53 @@ def compute_weight_i(NBR, r_0, i, n):
 
     # Compute Wi by summing over Yita
     Wi = np.sum(Yita, axis=0)
+    return Wi
+
+
+
+def compute_weight_i_matrix(NBR, r, i, n, d):
+    """
+    Compute the weight vector Wi based on the given neighborhood matrix NBR,
+    position matrix r, index i, and total number of agents n. Node indices begin from 1.
+
+    Parameters
+    ----------
+    NBR : list
+        Neighborhood list indicating neighbors of agent i.
+    r : np.ndarray
+        Positions of the agents in vectors.
+    i : int
+        Index of the current agent.
+    n : int
+        Total number of agents.
+    d : int
+        Dimension
+
+    Returns
+    -------
+    Wi : numpy.ndarray
+        Weight vector (d x nd) for agent i.
+    """
+    m = len(NBR)  # Number of neighbors of agent i
+    Tnum = int(comb(m, 2))  # Number of combinations of m taken 2 at a time
+    Yita_x = np.zeros((Tnum, n*d))  # Initialize Yita matrix
+    Yita_y = np.zeros((Tnum, n*d))
+    Wi = np.zeros((d, n*d))
+
+    k = 0  # Index for Yita
+    for s in range(m - 1):
+        for t in range(s + 1, m):
+            Yita_x[k, d*(NBR[s]-1):d*(NBR[s]-1)+2] = r[NBR[t]-1, 0] - r[i-1, 0], -(r[NBR[t]-1, 1] - r[i-1, 1])
+            Yita_y[k, d*(NBR[s]-1):d*(NBR[s]-1)+2] = r[NBR[t]-1, 1] - r[i-1, 1], r[NBR[t]-1, 0] - r[i-1, 0]
+            Yita_x[k, d*(NBR[t]-1):d*(NBR[t]-1)+2] = r[i-1, 0] - r[NBR[s]-1, 0], -(r[i-1, 1] - r[NBR[s]-1, 1])
+            Yita_y[k, d*(NBR[t]-1):d*(NBR[t]-1)+2] = r[i-1, 1] - r[NBR[s]-1, 1], r[i-1, 0] - r[NBR[s]-1, 0]
+            k += 1
+
+    # Compute Wi by summing over Yita
+    Yita_x = np.sum(Yita_x, axis=0)
+    Yita_y = np.sum(Yita_y, axis=0)
+    Wi[0, :] = Yita_x
+    Wi[1, :] = Yita_y 
     return Wi
 
 
@@ -455,3 +505,200 @@ def update_edge(edge, nbr1, nbr2):
     edge_new = np.vstack((np.array([1, nbr1+1]), np.array([1, nbr2+1]), edge))  # 因为原本所有节点的索引都加了 1
     
     return edge_new
+
+
+
+def get_edges_from_incidence_matrix(D):
+    """
+    从关联矩阵中获取边集。节点索引从 1 开始。
+
+    Parameters
+    ----------
+    D : np.ndarray
+        关联矩阵，(n, m)
+    
+    Returns
+    -------
+    edge : np.ndarray
+        边集，(m, 2)
+    """
+    n, m = D.shape
+    # 找到 D 中非零元素的索引
+    non_zero_indices_row, non_zero_indices_col = np.where(D != 0)
+    # 计算 non_zero_indices
+    non_zero_indices = sorted(non_zero_indices_row + non_zero_indices_col * n + 1)
+    # 将索引转换为 Mx2 的矩阵
+    edges = np.mod(np.reshape(non_zero_indices, (m, 2)), n)
+    # 将 0 替换为 n
+    edges[edges == 0] = n
+    return edges
+
+
+
+def plot_3d_formation(r, edges):
+    """
+    绘制三维编队图，给定节点坐标和边连接信息。
+    
+    Parameters
+    ----------
+    r (np.ndarray): 节点坐标，形状为 (n, 3)，其中 n 是节点数。
+    edges (np.ndarray): 边连接信息，形状为 (m, 2)，其中 m 是边数。
+    """
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    
+    # 绘制节点
+    ax.scatter(r[:, 0], r[:, 1], r[:, 2], c='blue', marker='o', s=100, label='Agents')
+    
+    # 绘制边
+    line_segments = []
+    for edge in edges:
+        # 转换为0索引
+        i, j = edge[0] - 1, edge[1] - 1
+        line_segments.append([r[i], r[j]])
+    
+    line_collection = Line3DCollection(line_segments, color='gray', linestyle='-', linewidth=1)
+    ax.add_collection(line_collection)
+    
+    # 设置坐标轴范围
+    ax.set_xlim(np.min(r[:, 0]) - 1, np.max(r[:, 0]) + 1)
+    ax.set_ylim(np.min(r[:, 1]) - 1, np.max(r[:, 1]) + 1)
+    ax.set_zlim(np.min(r[:, 2]) - 1, np.max(r[:, 2]) + 1)
+    
+    # 添加图例
+    ax.legend()
+    
+    plt.show()
+
+
+
+def compute_transformation_matrix_3D(v):
+    """
+    计算将给定向量 v 旋转为 x 轴上单位向量的变换矩阵 A。
+        1.将向量v旋转到xy平面上，旋转轴为与 [x,y,0]^T垂直的那根轴
+        2.将旋转到xy平面上的向量再绕z轴旋转转到x轴正半轴 
+        3.通过放缩，乘一个标量，使得最终的向量落到[1,0,0]^T。
+    
+    Parameters
+    ----------
+    v : np.ndarray
+        3D向量 (x, y, z)
+    
+    Returns
+    -------
+    A : np.ndarray
+        变换矩阵
+
+    """
+    x, y, z = v
+    norm_v = np.linalg.norm(v)
+    if norm_v == 0:
+        raise ValueError("Zero vector cannot be transformed.")
+
+    # Step 1: Rotate v to the xy-plane
+    xy_norm = np.sqrt(x**2 + y**2)
+    if xy_norm == 0:
+        R1 = np.eye(3)  # If x=y=0, no need for the first rotation
+    else:
+        axis_1 = np.array([y, -x, 0]) / xy_norm  # Normalized rotation axis
+        theta_1 = -np.arctan2(z, xy_norm)  # Rotation angle
+        R1 = R.from_rotvec(theta_1 * axis_1).as_matrix()
+
+    # Apply first rotation
+    v_rot1 = R1 @ v
+
+    # Step 2: Rotate in xy-plane to align with x-axis
+    x2, y2, _ = v_rot1
+    theta_2 = -np.arctan2(y2, x2)
+    R2 = np.array([
+        [np.cos(theta_2), -np.sin(theta_2), 0],
+        [np.sin(theta_2),  np.cos(theta_2), 0],
+        [0, 0, 1]
+    ])
+
+    # Step 3: Scale the vector to unit length
+    scale = 1 / norm_v
+    A = scale * R2 @ R1
+    return A
+
+
+
+def compute_weight_i_3D(NBR, r, i, n):
+    """
+    Compute the weight vector Wi based on the given neighborhood matrix NBR,
+    position matrix r_0, index i, and total number of agents n. Node indices begin from 1.
+
+    Parameters
+    ----------
+    NBR : list
+        Neighborhood list indicating neighbors of agent i.
+    r : np.ndarray        
+        Positions of the agents 
+        节点坐标，(n, 3)
+    i : int
+        Index of the current agent.
+    n : int
+        Total number of agents.
+
+    Returns
+    -------
+    Wi : numpy.ndarray
+        Weight vector for agent i.
+        (n, 3, 3)
+        Wij 是一个 3x3 的矩阵
+    """
+    m = len(NBR)  # Number of neighbors of agent i
+    Tnum = int(comb(m, 2))  # Number of combinations of m taken 2 at a time
+    Yita = np.zeros((Tnum, n, 3, 3))  # Initialize Yita matrix
+
+    k = 0  # Index for Yita
+    for s in range(m - 1):
+        for t in range(s + 1, m):
+            Yita[k, NBR[s]-1] = compute_transformation_matrix_3D(r[NBR[s]-1] - r[i-1])
+            Yita[k, NBR[t]-1] = compute_transformation_matrix_3D(r[i-1] - r[NBR[t]-1])
+            k += 1
+
+    # Compute Wi by summing over Yita
+    Wi = np.sum(Yita, axis=0)
+    return Wi
+
+
+
+def generate_weight_matrix_3D(r, edges):
+    """
+    生成三维编队的权重矩阵。
+
+    Parameters
+    ----------
+    r : np.ndarray
+        节点坐标，(n, 3)
+    edges : np.ndarray
+        边连接信息，(m, 2)
+    
+    Returns
+    -------
+    W : np.ndarray
+        权重矩阵，(n, n, 3, 3)
+    Wf : np.ndarray
+        权重矩阵的前 n-2 行，(n-2, n, 3, 3)
+    Wfl : np.ndarray
+        权重矩阵的前 n-2 行的后两列，(n-2, 2, 3, 3)
+    Wff : np.ndarray
+        权重矩阵的前 n-2 行的前 n-2 列，(n-2, n-2, 3, 3)
+    """
+    n = r.shape[0]  # 编队中节点的数量  
+    W = np.zeros((n, n, 3, 3))
+    for i in range(n):
+        NBR = SrchNbr(i+1, edges)    # Convert to 1-based index
+        Wi = compute_weight_i_3D(NBR, r, i+1, n)    # Wi (n, 3, 3)
+        W[i] = Wi
+        sum_i = 0
+        for j in range(n):
+            sum_i -= Wi[j]
+        W[i, i] = sum_i
+    
+    Wf = W[0:n-2, :]
+    Wfl = W[0:n-2, n-2:]
+    Wff = W[0:n-2, 0:n-2]
+
+    return W, Wf, Wfl, Wff

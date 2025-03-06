@@ -1,3 +1,7 @@
+# Description: This file is used to simulate the formation control with added robot.
+# The added robot will join the formation when it reaches the target position.
+# wij = a + bj
+
 import numpy as np
 import sympy as sp
 import matplotlib.pyplot as plt
@@ -67,23 +71,8 @@ draw_current_state(r, edge)
     控制核心：
     1. 构建权重矩阵（负复拉普拉斯矩阵，W = -L）
 """
-W = np.zeros((n, n), dtype=np.complex128)
-for i in range(n):
-    NBR = SrchNbr(i+1, edge)    # Convert to 1-based index
-    Wi = compute_weight_i(NBR, r_complex, i+1, n)
-    W[i] = Wi
-    sum_i = 0
-    for j in range(n):
-        sum_i -= Wi[j]
-    W[i, i] = sum_i
-
-# examinate the result
-# print(np.dot(W, r_complex))   # 理论上 Lp=0，这里Wr_0 应该也等于0
-
-# choose leaders: choose the last two agents as leaders
-Wf = W[0:n-2, :]
-Wfl = W[0:n-2, n-2:]
-Wff = W[0:n-2, 0:n-2]
+# Construct the weight matrix W = -L
+W, Wf, Wfl, Wff = generate_complex_weight_matrix(edge, r_complex)
 
 # verify the position of followers which is determined by the chosen leaders
 rL = r_complex[n-2:]
@@ -148,7 +137,7 @@ total_frames = qr.shape[0]  # trajectory 插值后总的控制点数
 """
 # 初始化
 x0 = r_complex  # 初始位置
-v0 = np.zeros((n, 1), dtype=complex)  # 初始速度
+v0 = np.zeros((n,), dtype=complex)  # 初始速度
 x_t = x0    # t时刻，agents 位置复数表示
 v_t = v0    # t时刻，agents 速度复数表示
 
@@ -163,25 +152,21 @@ aF = 0.4  # 跟随者控制参数
 
 # 要加入的机器人的参数设定
 L = 0.5                 # 加入编队后与相邻两个机器人的间距
-thres_add = 1        # 加入编队的阈值，与目标位置距离小于该值时，认为到达指定位置，加入编队
+thres_add = 0.6        # 加入编队的阈值，与目标位置距离小于该值时，认为到达指定位置，加入编队
 getT = 0                # 是否到达目标位置的标志
 Wchanged = 0            # 是否改变了权重矩阵的标志 (机器人加入编队后，需要改变权重矩阵)
 a_s = 3                 # 要加入的机器人的控制参数
 thres_us = 0.5          # 要加入的机器人的速度阈值
 ps = np.complex128(10 + 3j)            # 要加入的机器人的初始位置, 复数表示
-Vec_ps = np.array([np.real(ps), np.imag(ps)])       # 要加入的机器人的初始位置, 向量表示
 ps_t = ps               # t时刻，要加入的机器人的位置复数表示
 tarPos = 0 + 0j         # 要加入的机器人的目标位置
 nbr1 = 0                # 要加入的机器人的邻居1，index 1-based
 nbr2 = 0                # 要加入的机器人的邻居2，index 1-based
-ws_nb1 = 0              # 要加入的机器人与邻居1之间的权重
-ws_nb2 = 0              # 要加入的机器人与邻居2之间的权重
-yeta_s = 0              # 要加入的机器人与两个邻居的权重和
 
 # 误差记录
-err_track = np.zeros((n, 1))
-err_all = np.zeros((n, total_frames))
-x_all = np.zeros((n, total_frames), dtype=np.complex128)
+err_track = np.zeros((n+1, 1))
+err_all = np.zeros((n+1, total_frames))
+x_all = np.zeros((n+1, total_frames), dtype=np.complex128)
 # err_atk_all = np.zeros((1, 1000))
 # v_all = np.zeros((5, 1000))
 # ps_all = np.zeros((1, 1000))
@@ -189,7 +174,10 @@ x_all = np.zeros((n, total_frames), dtype=np.complex128)
 
 # 主循环
 def update(frame):
-    global loop, x_t, v_t, ps_t, Vec_xL_t_0, getT, Wchanged, a_s, thres_us, thres_add, tarPos, nbr1, nbr2, yeta_s, ws_nb1, ws_nb2
+    global loop, x_t, v_t, ps_t, Vec_xL_t_0
+    global getT, Wchanged, a_s, thres_us, thres_add
+    global tarPos, nbr1, nbr2
+    global W, Wf, Wfl, Wff, n, edge
     if loop >= qr.shape[0]:
         return
 
@@ -211,14 +199,15 @@ def update(frame):
         # 判断是否到达目标位置
         if np.abs(ps_t - tarPos) < thres_add:
             getT = 1
-    else:
-        if Wchanged == 0:
-            ws_nb1 = ps_t - x_t[nbr2 - 1]
-            ws_nb2 = x_t[nbr1 - 1] - ps_t
-            yeta_s = ws_nb1 + ws_nb2        # 计算速度时的系数
+            # 将要加入的机器人的信息加入到原本的编队中
+            n += 1
+            x_t = np.insert(x_t, 0, ps_t)
+            v_t = np.insert(v_t, 0, us)
+            edge = update_edge(edge, nbr1, nbr2)
+            W, Wf, Wfl, Wff = generate_complex_weight_matrix(edge, x_t)
+            xF_target = -np.linalg.inv(Wff) @ Wfl @ xL_target
+            x_target = np.concatenate((xF_target, xL_target))
             Wchanged = 1
-        us = (-1/yeta_s) * (ws_nb1*(aF * (ps_t - x_t[nbr1-1]) - v_t[nbr1-1]) + ws_nb2*(aF * (ps_t - x_t[nbr2-1]) - v_t[nbr2-1]))
-        us = us[0]
 
     # 领导者速度更新
     for i in range(n - 2, n):
@@ -226,16 +215,20 @@ def update(frame):
                         1j * np.tanh(np.imag(x_t[i] - xL_target[i - (n - 2)])))
 
     # 跟随者速度更新 
-    v_t[:n - 2] = (-aF * (x_t[:n - 2] + np.linalg.inv(Wff) @ Wfl @ x_t[n - 2:n])).reshape(n-2,1) - \
-                  np.linalg.inv(Wff) @ Wfl @ v_t[n - 2:n]
+    v_t[:n - 2] = (-aF * (x_t[:n - 2] + np.linalg.inv(Wff) @ Wfl @ x_t[n - 2:n])) - \
+                  (np.linalg.inv(Wff) @ Wfl @ v_t[n - 2:n])
 
     # 位置更新
-    x_t += (v_t * dt).flatten()
-    ps_t += us * dt
+    x_t += v_t * dt
+
+    if Wchanged == 0:
+        ps_t += us * dt
+
     # 记录数据
-    err_track = x_t - x_target
-    err_all[:, loop] = np.abs(err_track)
-    x_all[:, loop] = x_t
+    if Wchanged == 1:
+        err_track = x_t - x_target
+        err_all[:, loop] = np.abs(err_track)
+        x_all[:, loop] = x_t
     # err_atk = x_atk - x_t[1]
     # err_atk_all[:, loop - 1] = np.real(err_atk)
     # v_all[:, loop - 1] = np.real(v_t[:5].flatten())
@@ -245,17 +238,27 @@ def update(frame):
     ax.clear()
 
     # current position
+    # plot edges
     for i in range(edge.shape[0]):
         start_point = x_t[edge[i, 0] - 1]
         end_point = x_t[edge[i, 1] - 1]
-        plt.plot([np.real(start_point), np.real(end_point)], [np.imag(start_point), np.imag(end_point)], 'k', linewidth=1)
-    if getT == 1:
-        # print(ps_t, np.real(ps_t))
-        plt.plot([np.real(ps_t), np.real(x_t[nbr1-1])], [np.imag(ps_t), np.imag(x_t[nbr1-1])], 'g', linewidth=1)
-        plt.plot([np.real(ps_t), np.real(x_t[nbr2-1])], [np.imag(ps_t), np.imag(x_t[nbr2-1])], 'y', linewidth=1)
-    ax.plot(np.real(x_t[:n-2]), np.imag(x_t[:n-2]), 'k.', markersize=5)
-    ax.plot(np.real(x_t[n-2:]), np.imag(x_t[n-2:]), 'b.', markersize=5)
-    ax.plot(np.real(ps_t), np.imag(ps_t), 'r.', markersize=5)
+        if Wchanged == 1 and (edge[i, 0] == 1 or edge[i, 1] == 1):
+            plt.plot([np.real(start_point), np.real(end_point)], [np.imag(start_point), np.imag(end_point)], 'g', linewidth=1)
+        else:
+            plt.plot([np.real(start_point), np.real(end_point)], [np.imag(start_point), np.imag(end_point)], 'k', linewidth=1)
+    # if getT == 1:
+    #     plt.plot([np.real(ps_t), np.real(x_t[nbr1-1])], [np.imag(ps_t), np.imag(x_t[nbr1-1])], 'g', linewidth=1)
+    #     plt.plot([np.real(ps_t), np.real(x_t[nbr2-1])], [np.imag(ps_t), np.imag(x_t[nbr2-1])], 'y', linewidth=1)
+    
+    # plot nodes
+    if Wchanged == 0:
+        ax.plot(np.real(x_t[:n-2]), np.imag(x_t[:n-2]), 'k.', markersize=5)
+        ax.plot(np.real(x_t[n-2:]), np.imag(x_t[n-2:]), 'b.', markersize=5)
+        ax.plot(np.real(ps_t), np.imag(ps_t), 'r.', markersize=5)
+    else:
+        ax.plot(np.real(x_t[0]), np.imag(x_t[0]), 'r.', markersize=5)
+        ax.plot(np.real(x_t[1:n-2]), np.imag(x_t[1:n-2]), 'k.', markersize=5)
+        ax.plot(np.real(x_t[n-2:]), np.imag(x_t[n-2:]), 'b.', markersize=5)
     
     # target position
     # ax.plot(np.real(x_target), np.imag(x_target), 'g.', markersize=5)
@@ -273,4 +276,4 @@ ani = FuncAnimation(fig, update, frames=int(qr.shape[0]), interval=1)
 # ani.save("pid_animation.gif", writer="pillow", fps=30)
 plt.show()
 
-plot_multiple_curves(err_all, ["Agent 1", "Agent 2", "Agent 3", "Agent 4", "Agent 5"], "Error of each agent", "Time", "Error") 
+plot_multiple_curves(err_all, ["New Agent", "Agent 1", "Agent 2", "Agent 3", "Agent 4", "Agent 5"], "Error of each agent", "Time", "Error") 
