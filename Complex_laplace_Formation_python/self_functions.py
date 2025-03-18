@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Line3DCollection
 import sympy as sp
+from itertools import product
 
 def plot_curve(y_values, title="Y值曲线图", x_label="X", y_label="Y"):
     """
@@ -691,6 +692,258 @@ def generate_weight_matrix_3D(r, edges):
     for i in range(n):
         NBR = SrchNbr(i+1, edges)    # Convert to 1-based index
         Wi = compute_weight_i_3D(NBR, r, i+1, n)    # Wi (n, 3, 3)
+        W[i] = Wi
+        sum_i = 0
+        for j in range(n):
+            sum_i -= Wi[j]
+        W[i, i] = sum_i
+    
+    Wf = W[0:n-2, :]
+    Wfl = W[0:n-2, n-2:]
+    Wff = W[0:n-2, 0:n-2]
+
+    return W, Wf, Wfl, Wff
+
+
+
+def skew_symmetric_matrix(v):
+    """
+    计算向量 v 的反对称矩阵。
+
+    Parameters
+    ----------
+    v : np.ndarray
+        3D向量
+    
+    Returns
+    -------
+    np.ndarray
+        3x3反对称矩阵
+    """
+    return np.array([
+        [0, -v[2], v[1]],
+        [v[2], 0, -v[0]],
+        [-v[1], v[0], 0]
+    ])
+
+
+
+def compute_weight_ij_ik(p0, p1, p2, l):
+    """
+    计算 agents p0, p1, p2 间的权重矩阵，使得 w_01 @ (p1 - p0) + w_02 @ (p2 - p0) = 0。
+
+    Parameters
+    ----------
+    p0 : np.ndarray (3,)
+        agent 0 的位置
+    p1 : np.ndarray (3,)
+        agent 1 的位置
+    p2 : np.ndarray (3,)
+        agent 2 的位置
+    l : np.ndarray  (3,)
+        旋转轴
+    
+    Returns
+    -------
+    w_01 : np.ndarray
+        agent 0 和 agent 1 之间的权重矩阵
+    w_02 : np.ndarray
+        agent 0 和 agent 2 之间的权重矩阵
+    
+    """
+    l = l.reshape(-1, 1)  # (3, 1)
+
+    # 定义向量差
+    v1 = p1 - p0
+    v2 = p2 - p0
+
+    # 定义斜对称矩阵函数
+    def skew_symmetric_matrix(v):
+        return np.array([[0, -v[2], v[1]],
+                        [v[2], 0, -v[0]],
+                        [-v[1], v[0], 0]])
+
+    # 构造矩阵 w_01 和 w_02 的表达式
+    def construct_w(a, b, c, l):
+        return a * np.eye(3) + b * (l @ l.T) + c * skew_symmetric_matrix(l.flatten())
+
+    # 定义目标方程
+    def target_equation(a01, b01, c01, a02, b02, c02):
+        w_01 = construct_w(a01, b01, c01, l)
+        w_02 = construct_w(a02, b02, c02, l)
+        return w_01 @ v1 + w_02 @ v2
+
+    # 构造线性方程组
+    # 我们需要解的是 target_equation(a01, b01, c01, a02, b02, c02) = 0
+    # 这是一个由 3 个方程组成的系统（每个分量为 0）
+
+    # 展开方程，得到系数矩阵和右侧向量
+    # 这里我们手动展开方程，构造系数矩阵
+
+    # 定义变量顺序：a01, b01, c01, a02, b02, c02
+    num_vars = 6
+    num_equations = 3
+
+    # 初始化系数矩阵和右侧向量
+    A = np.zeros((num_equations, num_vars))
+    b = np.zeros(num_equations)
+
+    # 计算每个变量的系数
+    for i in range(num_equations):
+        # 对于每个方程（对应结果向量的每个分量）
+        # 计算 w_01 @ v1 + w_02 @ v2 的第 i 个分量
+        
+        # 展开 w_01 @ v1 的第 i 个分量
+        # w_01 = a01 * I + b01 * (l @ l.T) + c01 * skew_symmetric_matrix(l)
+        # 因此，w_01 @ v1 的第 i 个分量是：
+        # a01 * (I @ v1)[i] + b01 * ((l @ l.T) @ v1)[i] + c01 * (skew_symmetric_matrix(l) @ v1)[i]
+        
+        # 同理，w_02 @ v2 的第 i 个分量是：
+        # a02 * (I @ v2)[i] + b02 * ((l @ l.T) @ v2)[i] + c02 * (skew_symmetric_matrix(l) @ v2)[i]
+        
+        # 因此，整个方程的第 i 个分量为：
+        # a01 * (I @ v1)[i] + b01 * ((l @ l.T) @ v1)[i] + c01 * (skew_symmetric_matrix(l) @ v1)[i] +
+        # a02 * (I @ v2)[i] + b02 * ((l @ l.T) @ v2)[i] + c02 * (skew_symmetric_matrix(l) @ v2)[i] = 0
+        
+        # 计算各项系数
+        A[i, 0] = (np.eye(3) @ v1)[i]  # a01 的系数
+        A[i, 1] = ((l @ l.T) @ v1)[i]  # b01 的系数
+        A[i, 2] = (skew_symmetric_matrix(l.flatten()) @ v1)[i]  # c01 的系数
+        A[i, 3] = (np.eye(3) @ v2)[i]  # a02 的系数
+        A[i, 4] = ((l @ l.T) @ v2)[i]  # b02 的系数
+        A[i, 5] = (skew_symmetric_matrix(l.flatten()) @ v2)[i]  # c02 的系数
+
+    # 使用奇异值分解求解齐次方程组的非零解
+    U, s, Vh = np.linalg.svd(A)
+    # 计算矩阵 A 的秩
+    rank_A = np.sum(s > 1e-10)  # 考虑数值误差，设置一个阈值
+    n = A.shape[1]
+    # 零空间的维数
+    nullity_A = n - rank_A
+    # 获取零空间的基向量
+    null_space_basis = Vh[-nullity_A:, :]
+
+    # 定义系数的取值范围
+    coefficient_range = np.linspace(-1, 1, 10)  # 可以根据需要调整范围和精度
+
+    # 生成所有可能的系数组合
+    coefficient_combinations = product(coefficient_range, repeat=nullity_A)
+
+    # 筛选出能使 w_01 和 w_02 可逆的解
+    valid_solution = None
+    for coefficients in coefficient_combinations:
+        # 计算基向量的线性组合
+        solution = np.zeros(num_vars)
+        for i, coef in enumerate(coefficients):
+            solution += coef * null_space_basis[i]
+        
+        a01, b01, c01, a02, b02, c02 = solution
+        w_01 = construct_w(a01, b01, c01, l)
+        w_02 = construct_w(a02, b02, c02, l)
+        det_w01 = np.linalg.det(w_01)
+        det_w02 = np.linalg.det(w_02)
+        if np.abs(det_w01) > 1e-10 and np.abs(det_w02) > 1e-10:
+            valid_solution = solution
+            break
+
+    if valid_solution is None:
+        # print("未找到能使 w_01 和 w_02 可逆的解。")
+        a01, b01, c01, a02, b02, c02 = Vh[-1, :]
+    else:
+        # 提取解
+        a01, b01, c01, a02, b02, c02 = valid_solution
+
+        # 输出结果
+        # print(f"a01 = {a01}")
+        # print(f"b01 = {b01}")
+        # print(f"c01 = {c01}")
+        # print(f"a02 = {a02}")
+        # print(f"b02 = {b02}")
+        # print(f"c02 = {c02}")
+
+    # 验证解是否满足方程
+    w_01 = construct_w(a01, b01, c01, l)
+    w_02 = construct_w(a02, b02, c02, l)
+    # result = w_01 @ v1 + w_02 @ v2
+    # print("\n验证结果（应接近零向量）:")
+    # print(result)
+
+    # 验证 w_01 和 w_02 是否可逆
+    # print(f"w_01 的行列式: {np.linalg.det(w_01)}")
+    # print(f"w_02 的行列式: {np.linalg.det(w_02)}")
+
+    return w_01, w_02
+
+
+
+def compute_weight_i_final(NBR, r, i, l):
+    """
+    Compute the weight vector Wi based on the given neighborhood matrix NBR,
+    position matrix r_0, index i, and total number of agents n. Node indices begin from 1.
+
+    Parameters
+    ----------
+    NBR : list
+        Neighborhood list indicating neighbors of agent i.
+    r : np.ndarray        
+        Positions of the agents 
+        节点坐标，(n, 3)
+    i : int
+        Index of the current agent.
+    l : np.ndarray  (3,)
+        旋转轴
+
+    Returns
+    -------
+    Wi : numpy.ndarray
+        Weight vector for agent i.
+        (n, 3, 3)
+        Wij 是一个 3x3 的矩阵
+    """
+    m = len(NBR)  # Number of neighbors of agent i
+    n = r.shape[0]  # Number of  agents
+    Tnum = int(comb(m, 2))  # Number of combinations of m taken 2 at a time
+    Yita = np.zeros((Tnum, n, 3, 3))  # Initialize Yita matrix
+
+    k = 0  # Index for Yita
+    for s in range(m - 1):
+        for t in range(s + 1, m):
+            Yita[k, NBR[s]-1], Yita[k, NBR[t]-1] = compute_weight_ij_ik(r[i-1], r[NBR[s]-1], r[NBR[t]-1], l)
+            k += 1
+
+    # Compute Wi by summing over Yita
+    Wi = np.sum(Yita, axis=0)
+    return Wi
+
+def generate_weight_matrix_final(r, edges, l):
+    """
+    生成三维编队的权重矩阵。
+
+    Parameters
+    ----------
+    r : np.ndarray
+        节点坐标，(n, 3)
+    edges : np.ndarray
+        边连接信息，(m, 2)
+    l : np.ndarray  (3,)
+        旋转轴
+        
+    Returns
+    -------
+    W : np.ndarray
+        权重矩阵，(n, n, 3, 3)
+    Wf : np.ndarray
+        权重矩阵的前 n-2 行，(n-2, n, 3, 3)
+    Wfl : np.ndarray
+        权重矩阵的前 n-2 行的后两列，(n-2, 2, 3, 3)
+    Wff : np.ndarray
+        权重矩阵的前 n-2 行的前 n-2 列，(n-2, n-2, 3, 3)
+    """
+    n = r.shape[0]  # 编队中节点的数量  
+    W = np.zeros((n, n, 3, 3))
+    for i in range(n):
+        NBR = SrchNbr(i+1, edges)    # Convert to 1-based index
+        Wi = compute_weight_i_final(NBR, r, i+1, l)    # Wi (n, 3, 3)
         W[i] = Wi
         sum_i = 0
         for j in range(n):
