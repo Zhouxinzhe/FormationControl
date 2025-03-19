@@ -185,6 +185,10 @@ loop = 0
 aL = 1  # 领导者控制参数
 aF = 1  # 跟随者控制参数
 
+
+"""
+    Record Variables
+"""
 # 添加轨迹记录和编队帧记录
 trajectory_f = []  # 跟随者轨迹
 trajectory_l = []  # 领导者轨迹
@@ -196,6 +200,18 @@ leader_actual_positions = []
 follower_target_positions = []
 follower_actual_positions = []
 
+"""
+    Animation
+"""
+# 在全局变量中添加障碍物参数
+obstacles = [
+    {
+        'center': np.array([10, -7.5, 1.25]),  # 障碍物中心位置
+        'size': np.array([5, 0.1, 5]),     # 障碍物尺寸（长、宽、高）- 竖立的片状
+        'hole_center': np.array([10, -7.5, 1.25]),  # 镂空区中心位置
+        'hole_size': np.array([2, 0.1, 2])      # 镂空区尺寸（长、宽、高）
+    }
+]
 
 # 创建图形和三维轴
 fig = plt.figure(figsize=(8, 6))
@@ -238,6 +254,9 @@ def update(frame):
     if loop >= qr.shape[0]:
         loop = qr.shape[0] - 1
     
+    """
+        Control Calculation
+    """
     # loop 时的目标控制
     translation = qr[loop, :3]
     rotation = qr[loop, 3:12].reshape(3, 3)
@@ -252,27 +271,42 @@ def update(frame):
     vL_t_total = vL_t.flatten()
 
     # 跟随者位置的目标位置
-    # pF_target_1 = (scale * rotation @ pF_0.T + translation.reshape(3, 1)).T   # (5, 3)
-    pF_target = (-np.linalg.inv(Wff_total) @ Wfl_total @ (pL_t.flatten().reshape(-1, 1))).reshape(n-2, 3)
-    # print("\n实际 Target：\n", pF_target_1)
-    # print("通过 Leaders 推出的 Target：\n", pF_target_2)
-    
+    pF_target = (scale * rotation @ pF_0.T + translation.reshape(3, 1)).T   # (5, 3)
+    # pF_target = (-np.linalg.inv(Wff_total) @ Wfl_total @ (pL_t.flatten().reshape(-1, 1))).reshape(n-2, 3)
+
     # 跟随者位置的目标速度
     vF_t_total = (-aF * (pF_t.flatten() + np.linalg.inv(Wff_total) @ Wfl_total @ pL_t.flatten())) - np.linalg.inv(Wff_total) @ Wfl_total @ vL_t_total
     vF_t = vF_t_total.reshape(n-2, 3)
     
+    """
+        Update Positions and Velocities
+    """
     # 所有 agent 的位置和速度
     v_t = np.concatenate((vF_t, vL_t), axis=0)
     p_t += v_t * dt
     pF_t = p_t[:n-2, :]
     pL_t = p_t[n-2:, :]
 
+    """
+        Record
+    """
+    # 记录轨迹
+    trajectory_f.append(p_t[:-2, :].copy())
+    trajectory_l.append(p_t[-2:, :].copy())
+    
     # 记录目标位置和实际位置
     leader_target_positions.append(pL_target.T.copy())
     follower_target_positions.append(pF_target.copy())
     leader_actual_positions.append(pL_t.copy())
     follower_actual_positions.append(pF_t.copy())
 
+    # 记录编队帧（每隔一定帧数记录一次）
+    if loop % 500 == 0:  # 每隔50帧记录一次
+        formation_frames.append(p_t.copy())
+
+    """
+        Update Animation
+    """
     # 更新散点位置
     points_f.set_data(p_t[:-2,0], p_t[:-2,1])
     points_f.set_3d_properties(p_t[:-2,2])
@@ -282,14 +316,6 @@ def update(frame):
     for m, (j, k) in enumerate(edges):
         lines[m].set_data([p_t[j-1, 0], p_t[k-1, 0]], [p_t[j-1, 1], p_t[k-1, 1]])
         lines[m].set_3d_properties([p_t[j-1, 2], p_t[k-1, 2]])
-
-    # 记录轨迹
-    trajectory_f.append(p_t[:-2, :].copy())
-    trajectory_l.append(p_t[-2:, :].copy())
-    
-    # 记录编队帧（每隔一定帧数记录一次）
-    if loop % 500 == 0:  # 每隔50帧记录一次
-        formation_frames.append(p_t.copy())
 
     # 更新时间
     t += dt
@@ -310,16 +336,6 @@ ani = animation.FuncAnimation(
 # ani.save("3D_formation_final_rotate_x.gif", writer="pillow", fps=30)
 plt.show()
 
-
-# 在全局变量中添加障碍物参数
-obstacles = [
-    {
-        'center': np.array([10, -7.5, 1.25]),  # 障碍物中心位置
-        'size': np.array([5, 0.1, 5]),     # 障碍物尺寸（长、宽、高）- 竖立的片状
-        'hole_center': np.array([10, -7.5, 1.25]),  # 镂空区中心位置
-        'hole_size': np.array([2, 0.1, 2])      # 镂空区尺寸（长、宽、高）
-    }
-]
 
 
 def plot_trajectories_with_formations():

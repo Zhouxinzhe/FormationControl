@@ -23,13 +23,22 @@ d = 2
 # 获取矩阵 D 的大小: n is num of agents, m is num of edges
 n, m = D.shape
 
-# 二维编队
+# 二维编队-nominal formation
 r = np.array([
     [0.5, 0.5, 0],
     [0.5, -0.5, 0],
     [0, 0, 0],
     [-1, 1, 0],
     [-1, -1, 0]
+])
+
+# 二位编队-初始位置(与 nominal formation 有一定偏差)
+actual_r = np.array([
+    [-2, -1.0, 0],
+    [-2, -1.8, 0],
+    [-2.5, -1.5, 0],
+    [-3, -1, 0],
+    [-3, -2, 0]
 ])
 
 # 通过关联矩阵 D 求取边集 edges
@@ -55,19 +64,21 @@ Wff_total = Wf_total[:3*(n-2), :3*(n-2)]
 traj = [
     # via points    rotation        scale
     ([0, 0, 0],     [l, 0],             1),
-    ([2, 0, 0],     [l, math.pi/4],     0.75),
-    ([4, 2, 0],     [l, 0],             0.75),
-    ([5, 2, 0],     [l, -math.pi/4],    0.75),
-    ([7, 0, 0],     [l, 0],             0.75),
-    ([8, 0, 0],     [l, 0],             0.5),
-    ([10, 0, 0],    [l, math.pi/2],     1),
-    ([10, 3, 0],    [l, math.pi/2],     0.35),
-    ([10, 6.5, 0],  [l, math.pi/2],     0.35),
-    ([10, 10, 0],   [l, math.pi],       1),
-    ([5, 10, 0],    [l, math.pi],       1),
-    ([0, 10, 0],    [l, 3*math.pi/2],   1),
-    ([0, 5, 0],     [l, 3*math.pi/2],   1),
-    ([0, 0, 0],     [l, 2*math.pi],     1)
+    ([4, 0, 0],     [l, math.pi/4],     0.75),
+    ([6, 2, 0],     [l, 0],             0.75),
+    ([8, 2, 0],     [l, -math.pi/4],    0.75),
+    ([10, 0, 0],    [l, 0],             0.75),
+    ([12, 0, 0],    [l, 0],             0.5),
+    ([18, 0, 0],    [l, 0],             0.5),
+    ([23, 0, 0],    [l, 0],             1),
+    # ([10, 0, 0],    [l, math.pi/2],     1),
+    # ([10, 3, 0],    [l, math.pi/2],     0.35),
+    # ([10, 6.5, 0],  [l, math.pi/2],     0.35),
+    # ([10, 10, 0],   [l, math.pi],       1),
+    # ([5, 10, 0],    [l, math.pi],       1),
+    # ([0, 10, 0],    [l, 3*math.pi/2],   1),
+    # ([0, 5, 0],     [l, 3*math.pi/2],   1),
+    # ([0, 0, 0],     [l, 2*math.pi],     1)
 ]
 
 # Initialize variables
@@ -82,14 +93,14 @@ for j in range(len(traj)):
     
 
 # Generate trajectory
-qr,dqr,ddqr,tr = mstraj_(qvia, 0.03, 0.2)
+qr,dqr,ddqr,tr = mstraj_(qvia, 0.01, 0.2)
 
 
 
 # 初始化
-p_0 = r             # 初始位置，向量表示 (7, 3)
-pF_0 = r[:n-2, :]   # 跟随者初始位置，向量表示 (5, 3)
-pL_0 = r[n-2:]      # 领导者初始位置，向量表示 (2, 3)
+p_0 = actual_r             # 初始位置，向量表示 (7, 3)
+pF_0 = p_0[:n-2, :]   # 跟随者初始位置，向量表示 (5, 3)
+pL_0 = p_0[n-2:]      # 领导者初始位置，向量表示 (2, 3)
 v_0 = np.zeros((n, 3))      # 初始速度，向量表示 (7, 3)
 vF_0 = np.zeros((n-2, 3))   # 跟随者初始速度，向量表示 (5, 3)
 vL_0 = np.zeros((2, 3))     # 领导者初始速度，向量表示 (2, 3)
@@ -107,25 +118,36 @@ dt = 0.5
 loop = 0
 aL = 1  # 领导者控制参数
 aF = 2  # 跟随者控制参数
+vL_threshold = 0.06  # 领导者速度阈值
+vF_threshold = 0.1  # 跟随者速度阈值
+threshold = 0.05     # 位置阈值, 用于判断是否到达目标位置
 
+"""
+    Record Variables
+"""
 # 添加轨迹记录和编队帧记录
-trajectory_f = []  # 跟随者轨迹
-trajectory_l = []  # 领导者轨迹
-formation_frames = []  # 编队帧记录
+trajectory_f = [pF_0.copy()]  # 跟随者轨迹
+trajectory_l = [pL_0.copy()]  # 领导者轨迹
+formation_frames = [p_0.copy()]  # 编队帧记录
 
 # 用于记录目标位置和实际位置
-leader_target_positions = []
-leader_actual_positions = []
-follower_target_positions = []
-follower_actual_positions = []
+leader_target_positions = [r[n-2:, :].copy()]
+leader_actual_positions = [pL_0.copy()]
+follower_target_positions = [r[:n-2, :].copy()]
+follower_actual_positions = [pF_0.copy()]
 
+# 用于记录是否形成目标编队
+is_target_formation = [False]
 
+"""
+    Animation
+"""
 # 创建图形和三维轴
 fig = plt.figure(figsize=(8, 6))
 ax = fig.add_subplot(111)
 ax.set_aspect('equal') # 设置x和y轴等比例
-ax.set_xlim(-2.5, 12.5)
-ax.set_ylim(-2.5, 12.5)
+ax.set_xlim(-3.2, 25)
+ax.set_ylim(-3.2, 3.5)
 ax.set_xlabel('X')
 ax.set_ylabel('Y')
 
@@ -140,10 +162,10 @@ for j, k in edges:
 
 # 绘制障碍物
 obstacles = [  # (左下角x坐标, 左下角y坐标, 宽度, 高度)
-    (3.4, -0.5, 1.5, 0.8),  # 第一个障碍物
-    (8.5, 3, 1.0, 3.0),   # 第二个障碍物
-    (10.5, 3, 1.0, 3.0),    # 第三个障碍物
-    (7, 1.3, 2, 1)     # 第四个障碍物
+    (5.4, -0.5, 1.5, 0.8),  # 第一个障碍物
+    (14, 0.7, 3.0, 1.0),   # 第二个障碍物
+    (14, -1.7, 3.0, 1.0),    # 第三个障碍物
+    (10, 1.3, 2, 1)     # 第四个障碍物
 ]
 for (x, y, width, height) in obstacles:
     rect = Rectangle((x, y), width, height, 
@@ -155,8 +177,8 @@ for (x, y, width, height) in obstacles:
 # 动画初始化函数
 def init():
     # 设置初始位置
-    points_f.set_data(p_0[:-2,0], p_0[:-2,1])
-    points_l.set_data(p_0[-2:,0], p_0[-2:,1])
+    points_f.set_data(pF_0[:,0], pF_0[:,1])
+    points_l.set_data(pL_0[:,0], pL_0[:,1])
     for m, (j, k) in enumerate(edges):
         lines[m].set_data([p_0[j-1, 0], p_0[k-1, 0]], [p_0[j-1, 1], p_0[k-1, 1]])
     return (points_f, points_l) + tuple(lines) +  (title_text,)
@@ -169,59 +191,93 @@ def update(frame):
     if loop >= qr.shape[0]:
         loop = qr.shape[0] - 1
     
+
+    """
+        Control Calculation
+    """
     # loop 时的目标控制
     translation = qr[loop, :3]
     rotation = qr[loop, 3:12].reshape(3, 3)
     scale = qr[loop, 12]
 
     # 领导者位置的目标位置
-    pL_target = scale * rotation @ pL_0.T + translation.reshape(3, 1)   # (3, 2)
+    pL_target = scale * rotation @ r[n-2:, :].T + translation.reshape(3, 1)   # (3, 2)
     
     # 领导者速度的目标速度
     for i in range(2):
         vL_t[i] = [aL * np.tanh(pL_target[0, i] - pL_t[i, 0]), aL * np.tanh(pL_target[1, i] - pL_t[i, 1]), aL * np.tanh(pL_target[2, i] - pL_t[i, 2])]
+        if np.linalg.norm(vL_t[i]) > vL_threshold:
+            vL_t[i] = vL_t[i] / np.linalg.norm(vL_t[i]) * vL_threshold
     vL_t_total = vL_t.flatten()
 
     # 跟随者位置的目标位置
-    # pF_target_1 = (scale * rotation @ pF_0.T + translation.reshape(3, 1)).T   # (5, 3)
-    pF_target = (-np.linalg.inv(Wff_total) @ Wfl_total @ (pL_t.flatten().reshape(-1, 1))).reshape(n-2, 3)
-    # print("\n实际 Target：\n", pF_target_1)
-    # print("通过 Leaders 推出的 Target：\n", pF_target_2)
+    pF_target = (scale * rotation @ r[:n-2, :].T + translation.reshape(3, 1)).T   # (5, 3)
+    # pF_target = (-np.linalg.inv(Wff_total) @ Wfl_total @ (pL_t.flatten().reshape(-1, 1))).reshape(n-2, 3)
     
     # 跟随者位置的目标速度
     vF_t_total = (-aF * (pF_t.flatten() + np.linalg.inv(Wff_total) @ Wfl_total @ pL_t.flatten())) - np.linalg.inv(Wff_total) @ Wfl_total @ vL_t_total
     vF_t = vF_t_total.reshape(n-2, 3)
+    if np.linalg.norm(vF_t[0]) > vF_threshold:
+        vF_t[0] = vF_t[0] / np.linalg.norm(vF_t[0]) * vF_threshold
+    if np.linalg.norm(vF_t[1]) > vF_threshold:
+        vF_t[1] = vF_t[1] / np.linalg.norm(vF_t[1]) * vF_threshold
+    if np.linalg.norm(vF_t[2]) > vF_threshold:
+        vF_t[2] = vF_t[2] / np.linalg.norm(vF_t[2]) * vF_threshold
     
-    # 所有 agent 的位置和速度
+    """
+        Update Position and Velocity
+    """
+    # 更新所有 agent 的位置和速度
     v_t = np.concatenate((vF_t, vL_t), axis=0)
     p_t += v_t * dt
     pF_t = p_t[:n-2, :]
     pL_t = p_t[n-2:, :]
 
+    """
+        Record
+    """
+    # 记录轨迹
+    trajectory_f.append(p_t[:-2, :].copy())
+    trajectory_l.append(p_t[-2:, :].copy())
+    
     # 记录目标位置和实际位置
     leader_target_positions.append(pL_target.T.copy())
     follower_target_positions.append(pF_target.copy())
     leader_actual_positions.append(pL_t.copy())
     follower_actual_positions.append(pF_t.copy())
 
+    # 记录是否形成目标编队
+    distance_L1 = np.linalg.norm(pL_target[:, 0] - pL_t[0, :])
+    distance_L2 = np.linalg.norm(pL_target[:, 1] - pL_t[1, :])
+    distance_F1 = np.linalg.norm(pF_target[0, :] - pF_t[0, :])
+    distance_F2 = np.linalg.norm(pF_target[1, :] - pF_t[1, :])
+    distance_F3 = np.linalg.norm(pF_target[2, :] - pF_t[2, :])
+    form_target_formation = distance_L1 < threshold and distance_L2 < threshold and distance_F1 < threshold and distance_F2 < threshold and distance_F3 < threshold
+
+    # 记录编队帧（每隔一定帧数记录一次）
+    if loop % 400 == 200 or loop == qr.shape[0] - 2:  # 每隔50帧记录一次
+        formation_frames.append(p_t.copy())
+        is_target_formation.append(form_target_formation)
+
+    """
+        Update Animation
+    """
     # 更新散点位置
     points_f.set_data(p_t[:-2,0], p_t[:-2,1])
     points_l.set_data(p_t[-2:,0], p_t[-2:,1])
+    
     # 更新线条位置
     for m, (j, k) in enumerate(edges):
         lines[m].set_data([p_t[j-1, 0], p_t[k-1, 0]], [p_t[j-1, 1], p_t[k-1, 1]])
-
-    # 记录轨迹
-    trajectory_f.append(p_t[:-2, :].copy())
-    trajectory_l.append(p_t[-2:, :].copy())
-    
-    # 记录编队帧（每隔一定帧数记录一次）
-    if loop % 200 == 0:  # 每隔50帧记录一次
-        formation_frames.append(p_t.copy())
+        if form_target_formation:
+            lines[m].set_color('#7FFF00')
+        else:
+            lines[m].set_color('gray')
 
     # 更新时间
     t += dt
     loop += 1
+    
     # 更新标题
     title_text.set_text(f"t = {t:.1f}")
     
@@ -235,8 +291,14 @@ ani = animation.FuncAnimation(
     blit=True,
     interval=1
 )
-# ani.save("2D_formation_final.gif", writer="pillow", fps=30)
+# ani.save("2D_formation_final_2.gif", writer="pillow", fps=30)
 plt.show()
+
+
+
+
+
+
 
 
 
@@ -256,16 +318,16 @@ def plot_trajectories_with_formations():
     for i in range(len(trajectory_f[0])):
         x = [traj[i, 0] for traj in trajectory_f]
         y = [traj[i, 1] for traj in trajectory_f]
-        ax.plot(x, y, color='blue', alpha=0.3, label='Follower Trajectory' if i == 0 else "")
+        ax.plot(x, y, color='blue', alpha=0.5, label='Follower Trajectory' if i == 0 else "", lw = 0.5)
     
     # 绘制领导者轨迹
     for i in range(len(trajectory_l[0])):
         x = [traj[i, 0] for traj in trajectory_l]
         y = [traj[i, 1] for traj in trajectory_l]
-        ax.plot(x, y, color='red', alpha=0.3, label='Leader Trajectory' if i == 0 else "")
+        ax.plot(x, y, color='red', alpha=0.5, label='Leader Trajectory' if i == 0 else "", lw = 0.5)
     
     # 绘制编队帧
-    for frame in formation_frames:
+    for frame, tar in zip(formation_frames, is_target_formation):
         # 绘制跟随者
         for i in range(len(frame[:-2])):
             ax.scatter(frame[:-2, 0][i], frame[:-2, 1][i], color='blue', s=20, alpha=0.6)
@@ -276,7 +338,8 @@ def plot_trajectories_with_formations():
         
         # 绘制连接线
         for j, k in edges:
-            ax.plot([frame[j-1, 0], frame[k-1, 0]], [frame[j-1, 1], frame[k-1, 1]], color='black', lw=1.0, alpha=1)
+            if tar: ax.plot([frame[j-1, 0], frame[k-1, 0]], [frame[j-1, 1], frame[k-1, 1]], color='#7FFF00', lw=1.0, alpha=1)
+            else: ax.plot([frame[j-1, 0], frame[k-1, 0]], [frame[j-1, 1], frame[k-1, 1]], color='gray', lw=1.0, alpha=0.6)
 
     ax.set_xlabel('X (m)')
     ax.set_ylabel('Y (m)')
