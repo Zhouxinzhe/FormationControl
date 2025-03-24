@@ -229,9 +229,9 @@ ax.grid(False)
 ax.set_box_aspect([37,10,10])
 ax.view_init(elev=15, azim=-90)  # 设置初始视角
 # 设置白色背景
-# for axis in [ax.xaxis, ax.yaxis, ax.zaxis]:
-#     axis.pane.set_color('white')
-#     axis.line.set_color('black')
+for axis in [ax.xaxis, ax.yaxis, ax.zaxis]:
+    axis.pane.set_color('white')
+    axis.line.set_color('black')
 
 
 # 创建初始的散点图和线条
@@ -533,6 +533,10 @@ def plot_trajectories_with_formations():
     ax.grid(False)
     ax.set_box_aspect([37,10,10])
     ax.view_init(elev=15, azim=-90)  # 设置初始视角
+    # 设置白色背景
+    for axis in [ax.xaxis, ax.yaxis, ax.zaxis]:
+        axis.pane.set_color('white')
+        axis.line.set_color('black')
 
     # 绘制障碍物
     for obs in obstacles:
@@ -589,20 +593,20 @@ def plot_trajectories_with_formations():
         x = [traj[i, 0] for traj in trajectory_f]
         y = [traj[i, 1] for traj in trajectory_f]
         z = [traj[i, 2] for traj in trajectory_f]
-        ax.plot(x, y, z, color='blue', alpha=0.3, label='Follower Trajectory' if i == 0 else "", lw=0.5)
+        ax.plot(x, y, z, color='blue', alpha=0.5, label='Follower Trajectory' if i == 0 else "", lw=0.5)
     
     # 绘制领导者轨迹
     for i in range(len(trajectory_l[0])):
         x = [traj[i, 0] for traj in trajectory_l]
         y = [traj[i, 1] for traj in trajectory_l]
         z = [traj[i, 2] for traj in trajectory_l]
-        ax.plot(x, y, z, color='red', alpha=0.3, label='Leader Trajectory' if i == 0 else "", lw=0.5)
+        ax.plot(x, y, z, color='red', alpha=0.5, label='Leader Trajectory' if i == 0 else "", lw=0.5)
     
     # 绘制新加入的 agent 轨迹
     x = [traj[0] for traj in trajectory_n]
     y = [traj[1] for traj in trajectory_n]
     z = [traj[2] for traj in trajectory_n]
-    ax.plot(x, y, z, color='green', alpha=0.3, label='New Agent Trajectory', lw=0.5)
+    ax.plot(x, y, z, color='green', alpha=0.5, label='New Agent Trajectory', lw=0.5)
     
     # 绘制编队帧
     num = 0
@@ -627,16 +631,16 @@ def plot_trajectories_with_formations():
             if not tar:
                 ax.plot([frame[j-1, 0], frame[k-1, 0]], [frame[j-1, 1], frame[k-1, 1]], [frame[j-1, 2], frame[k-1, 2]], color='gray', lw=1.0, alpha=0.6)
             else:
-                ax.plot([frame[j-1, 0], frame[k-1, 0]], [frame[j-1, 1], frame[k-1, 1]], [frame[j-1, 2], frame[k-1, 2]], color='#7FFF00', lw=1.0, alpha=1)
+                ax.plot([frame[j-1, 0], frame[k-1, 0]], [frame[j-1, 1], frame[k-1, 1]], [frame[j-1, 2], frame[k-1, 2]], color='#76eb00', lw=1.0, alpha=1)
             
         # 绘制新加入的 agent 与最后三个 agent 的连接线
         if getT:
             for j, k in edges[-3:]:
-                ax.plot([new_agent_frame[0], frame[k-1, 0]], [new_agent_frame[1], frame[k-1, 1]], [new_agent_frame[2], frame[k-1, 2]], color='green', lw=1.0, alpha=1)
+                ax.plot([new_agent_frame[0], frame[k-1, 0]], [new_agent_frame[1], frame[k-1, 1]], [new_agent_frame[2], frame[k-1, 2]], color='#009700', lw=1.5, alpha=1)
 
         # 绘制箭头
         frame_center = np.mean(frame, axis=0)
-        if num == 1 or num == 2 or num == 5 or num == 6 or num == 8:
+        if num == 1 or num == 5:
             arrow = Arrow3D(
                 [frame_center[0], frame_center[0]],  # x 坐标
                 [frame_center[1], frame_center[1]],  # y 坐标
@@ -647,7 +651,7 @@ def plot_trajectories_with_formations():
                 lw=2                         # 线宽
             )
             ax.add_artist(arrow)
-        elif num == 3 or num == 4:
+        elif num == 3:
             arrow = Arrow3D(
                 [frame_center[0], frame_center[0]],  # x 坐标
                 [frame_center[1], frame_center[1]+1.5],  # y 坐标
@@ -704,7 +708,8 @@ def plot_error_curves():
         ax1.plot(t_values, follower_error[:, i, 0], label=f'Follower {i+1}', linewidth=1.5)
     ax1.plot(t_values[920:], new_agent_error[920:, 0], label='New Agent', linewidth=1.5)
     ax1.set_ylabel('X Error (m)')
-    ax1.grid(True, linestyle='--', alpha=0.7)
+    ax1.set_xticklabels([])  # 隐藏X轴刻度标签
+    # ax1.grid(True, linestyle='--', alpha=0.7)
     
     # Y方向误差
     ax2 = axes[1]
@@ -714,7 +719,8 @@ def plot_error_curves():
         ax2.plot(t_values, follower_error[:, i, 1], label=f'Follower {i+1}', linewidth=1.5)
     ax2.plot(t_values[920:], new_agent_error[920:, 1], label='New Agent', linewidth=1.5)
     ax2.set_ylabel('Y Error (m)')
-    ax2.grid(True, linestyle='--', alpha=0.7)
+    ax2.set_xticklabels([])  # 隐藏X轴刻度标签
+    # ax2.grid(True, linestyle='--', alpha=0.7)
     
     # Z方向误差
     ax3 = axes[2]
@@ -725,7 +731,7 @@ def plot_error_curves():
     ax3.plot(t_values[920:], new_agent_error[920:, 2], label='New Agent', linewidth=1.5)
     ax3.set_ylabel('Z Error (m)', labelpad=13)
     ax3.set_xlabel('Time (s)')
-    ax3.grid(True, linestyle='--', alpha=0.7)
+    # ax3.grid(True, linestyle='--', alpha=0.7)
     
     # 获取所有图例标签
     handles, labels = ax1.get_legend_handles_labels()

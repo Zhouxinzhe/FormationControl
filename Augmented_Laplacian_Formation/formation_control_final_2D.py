@@ -328,18 +328,18 @@ def plot_trajectories_with_formations():
     
     # 绘制编队帧
     for frame, tar in zip(formation_frames, is_target_formation):
+        # 绘制连接线
+        for j, k in edges:
+            if tar: ax.plot([frame[j-1, 0], frame[k-1, 0]], [frame[j-1, 1], frame[k-1, 1]], color='#7FFF00', lw=2, alpha=1, zorder=1)
+            else: ax.plot([frame[j-1, 0], frame[k-1, 0]], [frame[j-1, 1], frame[k-1, 1]], color='gray', lw=2, alpha=1, zorder=1)
+
         # 绘制跟随者
         for i in range(len(frame[:-2])):
-            ax.scatter(frame[:-2, 0][i], frame[:-2, 1][i], color='blue', s=20, alpha=0.6)
+            ax.scatter(frame[:-2, 0][i], frame[:-2, 1][i], color='blue', s=30, alpha=1, zorder=2)
         
         # 绘制领导者
         for i in range(len(frame[-2:])):
-            ax.scatter(frame[-2:, 0][i], frame[-2:, 1][i], color='red', s=20, alpha=0.6)
-        
-        # 绘制连接线
-        for j, k in edges:
-            if tar: ax.plot([frame[j-1, 0], frame[k-1, 0]], [frame[j-1, 1], frame[k-1, 1]], color='#7FFF00', lw=1.0, alpha=1)
-            else: ax.plot([frame[j-1, 0], frame[k-1, 0]], [frame[j-1, 1], frame[k-1, 1]], color='gray', lw=1.0, alpha=0.6)
+            ax.scatter(frame[-2:, 0][i], frame[-2:, 1][i], color='red', s=30, alpha=1, zorder=2)
 
     ax.set_xlabel('X (m)')
     ax.set_ylabel('Y (m)')
